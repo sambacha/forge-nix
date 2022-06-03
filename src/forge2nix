@@ -14,8 +14,9 @@ CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/forge2nix"
 export GIT_CONFIG_NOSYSTEM=1
 unset XDG_CONFIG_HOME
 unset HOME
+FORGE2NIX_VERSION='v0.0.1'
 
-FORGE2NIX_VERSION="${FORGE2NIX_VERSION:-unknown}"
+#FORGE2NIX_VERSION="${FORGE2NIX_VERSION:-unknown}"
 
 # TODO
 # export ETHERS_SOLC_LOG='in=in.json','out=out.json'
