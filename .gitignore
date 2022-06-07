@@ -4,8 +4,14 @@ cache/
 artifacts/
 logs
 *.log
+<<<<<<< HEAD
 result
 
+||||||| f48e145
+
+=======
+result
+>>>>>>> 7099d3118ad646bf3eef5fa58f2ac584a3ccb6b7
 ## CVE-2021-21300 style exploits
 .\#*
 

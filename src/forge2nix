@@ -9,11 +9,11 @@
 set -eo pipefail
 shopt -s lastpipe
 
-CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/forge2nix"
+CACHE_DIR="${XDG_CACHE_HOME:-"${HOME}/.cache"}/forge2nix"
 export GIT_CONFIG_NOSYSTEM=1
 unset XDG_CONFIG_HOME
 unset HOME
-FORGE2NIX_VERSION='v0.0.1'
+FORGE2NIX_VERSION='v0.0.3'
 
 #FORGE2NIX_VERSION="${FORGE2NIX_VERSION:-unknown}"
 
@@ -62,8 +62,14 @@ subdeps() {
 export -f subdeps
 
 spec() {
+<<<<<<< HEAD
   (
     cd "$1"
+||||||| f48e145
+  (cd "$1"
+=======
+  (cd "$1" || exit
+>>>>>>> 7099d3118ad646bf3eef5fa58f2ac584a3ccb6b7
     eval "$getSpec"
     deps=$(subdeps)
     name=$alias-${rev::7}
