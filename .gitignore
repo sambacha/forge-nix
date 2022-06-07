@@ -4,6 +4,7 @@ cache/
 artifacts/
 logs
 *.log
+result
 
 ## CVE-2021-21300 style exploits
 .\#*
