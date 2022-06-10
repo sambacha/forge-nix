@@ -66,14 +66,8 @@ subdeps() {
 export -f subdeps
 
 spec() {
-<<<<<<< HEAD
   (
-    cd "$1"
-||||||| f48e145
-  (cd "$1"
-=======
-  (cd "$1" || exit
->>>>>>> 7099d3118ad646bf3eef5fa58f2ac584a3ccb6b7
+    cd "$1" || exit
     eval "$getSpec"
     deps=$(subdeps)
     name=$alias-${rev::7}
