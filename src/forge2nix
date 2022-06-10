@@ -9,11 +9,15 @@
 set -eo pipefail
 shopt -s lastpipe
 
+# runs with Makefile to generate hash on CI
+# shellcheck disable=SC2034
+SCRIPT_COMMIT_SHA="${LOAD_SCRIPT_COMMIT_SHA}"
+
 CACHE_DIR="${XDG_CACHE_HOME:-"${HOME}/.cache"}/forge2nix"
 export GIT_CONFIG_NOSYSTEM=1
 unset XDG_CONFIG_HOME
 unset HOME
-FORGE2NIX_VERSION='v0.0.3'
+FORGE2NIX_VERSION='v0.0.4'
 
 #FORGE2NIX_VERSION="${FORGE2NIX_VERSION:-unknown}"
 
@@ -62,7 +66,8 @@ subdeps() {
 export -f subdeps
 
 spec() {
-  (cd "$1" || exit
+  (
+    cd "$1" || exit
     eval "$getSpec"
     deps=$(subdeps)
     name=$alias-${rev::7}
