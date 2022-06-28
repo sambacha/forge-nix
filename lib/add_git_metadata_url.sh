@@ -2,7 +2,7 @@
 
 add_git_metadata_url() {
   local commit=$(git rev-parse HEAD)
-  local origin=$(git remote get-url --all origin) 2> /dev/null
+  local origin=$(git remote get-url --all origin) 2>/dev/null
 
   # This is not exhaustive for remote URL formats, but does cover the
   # most common hosting scenarios for where a commit URL exists
@@ -21,10 +21,12 @@ add_git_metadata_url() {
 
     local url=""
     case $host in
-      *github* | *gitlab* | *gogs* )
-        url="https://${host}/${repo_path}/commit/${commit}" ;;
-      *bitbucket* )
-        url="https://${host}/${repo_path}/commits/${commit}";;
+    *github* | *gitlab* | *gogs*)
+      url="https://${host}/${repo_path}/commit/${commit}"
+      ;;
+    *bitbucket*)
+      url="https://${host}/${repo_path}/commits/${commit}"
+      ;;
     esac
 
     if [ -n "$url" ]; then
