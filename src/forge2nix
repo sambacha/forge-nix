@@ -17,12 +17,13 @@ CACHE_DIR="${XDG_CACHE_HOME:-"${HOME}/.cache"}/forge2nix"
 export GIT_CONFIG_NOSYSTEM=1
 unset XDG_CONFIG_HOME
 unset HOME
-FORGE2NIX_VERSION='v0.0.4'
+FORGE2NIX_VERSION='v0.0.5'
 
 #FORGE2NIX_VERSION="${FORGE2NIX_VERSION:-unknown}"
 
 # TODO
 # export ETHERS_SOLC_LOG='in=in.json','out=out.json'
+# LC_ALL=C sort -t. -k 1,1 -k 2,2n -k 3,3n
 
 usage() {
   echo >&2 "
@@ -46,7 +47,7 @@ Version $FORGE2NIX_VERSION
 }
 
 export getSpec='rev=$(git rev-parse HEAD); \
-fullref=$(git for-each-ref --contains $rev | sed -n "s/^.*refs\/\(heads\|remotes\/\)//p" | sort -k1.1,1.1 -rs | head -n1); \
+fullref=$(git for-each-ref --contains $rev | sed -n "s/^.*refs\/\(heads\|remotes\/\)//p" | LC_ALL=C sort -k1.1,1.1 -rs | head -n1); \
 remote=${fullref%/*}; remote=${remote:-origin};
 ref=${fullref#*/}; \
 url=$(git remote get-url $remote | sed "s/\(\.git\|\/\)$//"); \
@@ -55,7 +56,7 @@ alias=${url##*/}; con=${alias}_${rev::7}; '
 submods() {
   git submodule --quiet foreach --recursive \
     "$getSpec"'printf %s\\n "$PWD $con"' |
-    sort -k2 -u
+    LC_ALL=C sort -k2 -u
 }
 export -f submods
 
@@ -353,7 +354,7 @@ list | ls)
   ;;
 duplicates | dup)
   jq -r '.contracts[] | values | "\(.repo.rev) \(.name)"' "$outPath" |
-    sort -k2 | uniq -f1 -D | column -t -s" "
+    LC_ALL=C sort -k2 | uniq -f1 -D | column -t -s" "
   ;;
 update | up)
   if [[ -n $2 ]]; then
@@ -378,3 +379,98 @@ help)
   exit 1
   ;;
 esac
+
+
+# Ensure that permissions are valid.
+function check_script_perms() {
+    local path="$1"
+    local result=0
+    
+    # Reject if path isn't on boot volume.
+    if [[ $(stat -f "%d" "$path") != $(stat -f "%d" "/") ]]; then
+        echo "Warning: $path is not on boot volume"
+        result=1
+    fi
+    
+    # Reject symbolic links.
+    if [[ -h "$path" ]]; then
+        echo "Warning: $path is a symbolic link"
+        result=1
+    fi
+    
+    # Ensure that it's owned by root.
+    if [[ $(stat -f "%u" "$path") -ne 0 ]]; then
+        echo "Warning: $path isn't owned by root"
+        result=1
+    fi
+    
+    # Reject world writable paths.
+    if [[ $(ls -ld "$path" | cut -c 9) == "w" ]]; then
+        echo "Warning: $path is world writable"
+        result=1
+    fi
+    
+    # Reject group writable paths unless the gid is wheel.
+    if [[ $(ls -ld "$path" | cut -c 6) == "w" ]]; then
+        if [[ $(stat -f "%g" "$path") -ne 0 ]]; then
+            echo "Warning: $path is group writable"
+            result=1
+        fi
+    fi
+    
+    # Path must be executable.
+    if [[ ! -x "$path" ]]; then
+        echo "Warning: $path isn't executable"
+        result=1
+    fi
+    
+    return $result
+}
+
+
+# Check permissions on the plugin's support directory.
+function check_script_dir() {
+    local script_names=( \
+        "foundry-script"  \
+        "foundry-cast"  \
+        "foundry-forge" \
+        "foundry-anvil" \
+    )
+    local path
+    local script
+    
+    if [[ ! -d "$SCRIPT_DIR" ]]; then
+        echo "Warning: $SCRIPT_DIR does not exist"
+    fi
+    
+    path="$SCRIPT_DIR"
+    while true; do
+        if [[ -d "$path" ]]; then
+            if ! check_script_perms "$path"; then
+                echo "Warning: wrong permissions on $path"
+            fi
+        fi
+        if [[ "$path" == "/" ]]; then
+            break
+        fi
+        path="$(dirname "$path")"
+    done
+    
+    for name in "${script_names[@]}"; do
+        for path in "$SCRIPT_DIR/$name"-*; do
+            if [[ -e "$path" ]]; then
+                if ! check_script_perms "$path"; then
+                    echo "Warning: wrong permissions on $path"
+                fi
+            fi
+        done
+    done
+}
+
+
+declare -a tempfiles
+cleanup_tempfiles() {
+    rm -f "${tempfiles[@]}"
+}
+
+trap cleanup_tempfiles EXIT
