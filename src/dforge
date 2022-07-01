@@ -1,0 +1,248 @@
+# -*- shell -*-
+# This should always be the first line of code to facilitate debugging
+[ -n "$DFORGE_DEBUG" ] && set -vx
+
+
+# If '.r<N>-g<SHA>' is appended to the version, you are seeing an unreleased
+# version built from the main branch HEAD.
+DFORGE_VERSION='0.3.0'; export DFORGE_VERSION
+DFORGE_SELF='dforge-standalone.sh'; export DFORGE_SELF
+
+# Ensure all files created are accessible only to the current user.
+umask 0077
+
+fatal() {
+	echo "$DFORGE_SELF: fatal: $1" >&2
+	[ -z "$2" ] && exit 1
+	exit "$2"
+}
+
+# We need to run getops as soon as possible so we catch -d and other
+# options that will modify our behaviour.
+# Commands are handled at the end of this script.
+# shellcheck disable=SC2220
+while getopts c:dv flag; do
+	case "$flag" in
+		d)
+			set -vx
+			DFORGE_DEBUG=1
+			export DFORGE_DEBUG
+			echo 'debug mode on'
+			echo "$DFORGE_SELF $DFORGE_VERSION"
+			;;
+		v)
+			DFORGE_VERBOSE=1
+			export DFORGE_VERBOSE
+			echo 'verbose mode on'
+			echo "$DFORGE_SELF $DFORGE_VERSION"
+			;;
+		c)
+			DFORGE_OPTION_CONFIG="$OPTARG"
+			export DFORGE_OPTION_CONFIG
+			;;
+	esac
+done
+shift $((OPTIND-1))
+
+source_all() {
+	# Source file even if it's in $PWD and does not have any slashes in it
+	# shellcheck source=/dev/null
+	case "$1" in
+		*/*) . "$1";;
+		*)   . "$PWD/$1";;
+	esac;
+}
+
+
+# Read configuration and set defaults if anything's not set
+[ -n "$DFORGE_DEBUG" ]                  && set -vx
+: "${XDG_CONFIG_HOME:="$HOME/.config"}"
+
+# Read configuration files if there are any
+# shellcheck source=/dev/null
+[ -r "/etc/dforge/config" ]             && . "/etc/dforge/config"
+# shellcheck source=/dev/null
+[ -r "$XDG_CONFIG_HOME/dforge/config" ] && . "$XDG_CONFIG_HOME/dforge/config"
+if [ -n "$DFORGE_OPTION_CONFIG" ]; then
+	# Source $DFORGE_OPTION_CONFIG if it can be read and is in $PWD of $PATH
+	if [ -r "$DFORGE_OPTION_CONFIG" ]; then
+		source_all "$DFORGE_OPTION_CONFIG"
+	else
+		fatal "Can not read configuration file '$DFORGE_OPTION_CONFIG'" 1
+	fi
+fi
+[ -n "$DFORGE_DEBUG" ]                  && set -vx
+
+# Read defaults
+: "${DFORGE_REPO_D:="$XDG_CONFIG_HOME/dforge/repo.d"}"; export DFORGE_REPO_D
+: "${DFORGE_HOOK_D:="$XDG_CONFIG_HOME/dforge/hooks-enabled"}"; export DFORGE_HOOK_D
+: "${DFORGE_OVERLAY_D:="$XDG_CONFIG_HOME/dforge/overlays-enabled"}"; export DFORGE_OVERLAY_D
+: "${DFORGE_BASE:="$HOME"}"; export DFORGE_BASE
+: "${DFORGE_GITIGNORE:=exact}"; export DFORGE_GITIGNORE
+: "${DFORGE_GITATTRIBUTES:=none}"; export DFORGE_GITATTRIBUTES
+: "${DFORGE_WORKTREE:=absolute}"; export DFORGE_WORKTREE
+
+if [ ! "x$DFORGE_GITIGNORE" = 'xexact' ] && [ ! "x$DFORGE_GITIGNORE" = 'xnone' ] && [ ! "x$DFORGE_GITIGNORE" = 'xrecursive' ]; then
+	fatal "'\$DFORGE_GITIGNORE' must equal 'exact', 'none', or 'recursive'" 1
+fi
+
+if [ ! "x$DFORGE_WORKTREE" = 'xabsolute' ] && [ ! "x$DFORGE_WORKTREE" = 'xrelative' ]; then
+	fatal "'\$DFORGE_WORKTREE' must equal 'absolute', or 'relative'" 1
+fi
+
+debug "$(git version)"
+
+if [ ! "x$DFORGE_GITIGNORE" = 'xexact' ] && [ ! "x$DFORGE_GITIGNORE" = 'xnone' ] && [ ! "x$DFORGE_GITIGNORE" = 'xrecursive' ]; then
+	fatal "'\$DFORGE_GITIGNORE' must equal 'exact', 'none', or 'recursive'" 1
+fi
+
+DFORGE_COMMAND=$1; export DFORGE_COMMAND
+
+case $DFORGE_COMMAND in
+	clon|clo|cl) DFORGE_COMMAND=clone;;
+	commi|comm|com|co|ci) DFORGE_COMMAND=commit;;
+	delet|dele|del|de) DFORGE_COMMAND=delete;;
+	ente|ent|en) DFORGE_COMMAND=enter;;
+	hel|he) DFORGE_COMMAND=help;;
+	ini|in) DFORGE_COMMAND=init;;
+	pul) DFORGE_COMMAND=pull;;
+	pus) DFORGE_COMMAND=push;;
+	renam|rena|ren|re) DFORGE_COMMAND=rename;;
+	ru) DFORGE_COMMAND=run;;
+	statu|stat|sta|st) DFORGE_COMMAND=status;;
+	upgrad|upgra|upgr|up) DFORGE_COMMAND=upgrade;;
+	versio|versi|vers|ver|ve) DFORGE_COMMAND=version;;
+	which|whi|wh) DFORGE_COMMAND=which;;
+	write|writ|wri|wr) DFORGE_COMMAND=write-gitignore;;
+esac
+
+if [ x"$DFORGE_COMMAND" = x'clone' ]; then
+	DFORGE_BRANCH=
+	if [ "$2" = -b ]; then
+		DFORGE_BRANCH=$3
+		shift
+		shift
+	fi
+	[ -z "$2" ] && fatal "$DFORGE_COMMAND: please specify a remote" 1
+	GIT_REMOTE="$2"
+	[ -n "$DFORGE_BRANCH" ] || if [ "$3" = -b ]; then
+		DFORGE_BRANCH=$4
+		shift
+		shift
+	fi
+	if [ -n "$3" ]; then
+		DFORGE_REPO_NAME=$3
+		[ -z "$DFORGE_BRANCH" ] && [ "$4" = -b ] && DFORGE_BRANCH=$5
+	else
+		DFORGE_REPO_NAME=$(basename "${GIT_REMOTE#*:}" .git)
+	fi
+	[ -z "$DFORGE_REPO_NAME" ] && fatal "$DFORGE_COMMAND: could not determine repository name" 1
+	export DFORGE_REPO_NAME
+	[ -n "$DFORGE_BRANCH" ] || DFORGE_BRANCH=main
+	GIT_DIR=$DFORGE_REPO_D/$DFORGE_REPO_NAME.git; export GIT_DIR
+elif [ "$DFORGE_COMMAND" = 'help' ]; then
+	help && exit
+elif [ "$DFORGE_COMMAND" = 'version' ]; then
+	echo "$DFORGE_SELF $DFORGE_VERSION"
+	git version
+	exit
+elif [ x"$DFORGE_COMMAND" = x'which' ]; then
+	[ -z "$2" ] && fatal "$DFORGE_COMMAND: please specify a filename" 1
+	[ -n "$3" ] && fatal "$DFORGE_COMMAND: too many parameters" 1
+	DFORGE_COMMAND_PARAMETER=$2; export DFORGE_COMMAND_PARAMETER
+elif [ x"$DFORGE_COMMAND" = x'delete' ]           ||
+	[ x"$DFORGE_COMMAND" = x'enter' ]            ||
+	[ x"$DFORGE_COMMAND" = x'init' ]             ||
+	[ x"$DFORGE_COMMAND" = x'list-tracked-by' ]  ||
+	[ x"$DFORGE_COMMAND" = x'rename' ]           ||
+	[ x"$DFORGE_COMMAND" = x'run' ]              ||
+	[ x"$DFORGE_COMMAND" = x'upgrade' ]          ||
+	[ x"$DFORGE_COMMAND" = x'write-gitignore' ]; then
+	if [ -z "$2" ]; then
+		[ -z "$DFORGE_REPO_NAME" ] && fatal "$DFORGE_COMMAND: please specify repository to work on" 1
+	else
+		DFORGE_REPO_NAME=$2; export DFORGE_REPO_NAME
+	fi
+	GIT_DIR=$DFORGE_REPO_D/$DFORGE_REPO_NAME.git; export GIT_DIR
+	[ x"$DFORGE_COMMAND" = x'rename' ] && [ -z "$3" ] && fatal "$DFORGE_COMMAND: please specify a target name" 1
+	[ x"$DFORGE_COMMAND" = x'run'    ] && [ -z "$3" ] && fatal "$DFORGE_COMMAND: please specify a command" 1
+	[ x"$DFORGE_COMMAND" = x'rename' ] && { DFORGE_REPO_NAME_NEW=$3; export DFORGE_REPO_NAME_NEW;
+	GIT_DIR_NEW=$DFORGE_REPO_D/$DFORGE_REPO_NAME_NEW.git; export GIT_DIR_NEW; }
+	[ x"$DFORGE_COMMAND" = x'run' ]    && shift 2
+elif [ x"$DFORGE_COMMAND" = x'foreach' ]; then
+	[ -z "$2" ] && fatal "$DFORGE_COMMAND: please specify a command" 1
+	shift 1
+elif [ x"$DFORGE_COMMAND" = x'commit' ] ||
+	[ x"$DFORGE_COMMAND" = x'list'   ] ||
+	[ x"$DFORGE_COMMAND" = x'list-tracked' ] ||
+	[ x"$DFORGE_COMMAND" = x'list-untracked' ] ||
+	[ x"$DFORGE_COMMAND" = x'pull'   ] ||
+	[ x"$DFORGE_COMMAND" = x'push'   ]; then
+	:
+elif [ x"$DFORGE_COMMAND" = x'status' ]; then
+	if [ x"$2" = x'--terse' ]; then
+		DFORGE_STATUS_TERSE=1; export DFORGE_STATUS_TERSE
+		shift
+	fi
+	DFORGE_REPO_NAME=$2; export DFORGE_REPO_NAME
+elif [ -n "$2" ]; then
+	DFORGE_COMMAND='run'; export DFORGE_COMMAND
+	DFORGE_REPO_NAME=$1; export DFORGE_REPO_NAME
+	GIT_DIR=$DFORGE_REPO_D/$DFORGE_REPO_NAME.git; export GIT_DIR
+	[ -d "$GIT_DIR" ] || { help; exit 1; }
+	shift 1
+	set -- "git" "$@"
+elif [ -n "$DFORGE_COMMAND" ]; then
+	DFORGE_COMMAND='enter'; export DFORGE_COMMAND
+	DFORGE_REPO_NAME=$1; export DFORGE_REPO_NAME
+	GIT_DIR=$DFORGE_REPO_D/$DFORGE_REPO_NAME.git; export GIT_DIR
+	[ -d "$GIT_DIR" ] || { help; exit 1; }
+else
+	# $1 is empty
+	help && exit 1
+fi
+
+# Did we receive a directory instead of a name?
+# Mangle the input to fit normal operation.
+if echo "$DFORGE_REPO_NAME" | grep -q '/'; then
+	GIT_DIR=$DFORGE_REPO_NAME; export GIT_DIR
+	DFORGE_REPO_NAME=$(basename "$DFORGE_REPO_NAME" .git); export DFORGE_REPO_NAME
+fi
+
+check_dir() {
+	check_directory="$1"
+	if [ ! -d "$check_directory" ]; then
+		if [ -e "$check_directory" ]; then
+			fatal "'$check_directory' exists but is not a directory" 13
+		else
+			verbose "attempting to create '$check_directory'"
+			mkdir -p "$check_directory" || fatal "could not create '$check_directory'" 50
+		fi
+	fi
+}
+
+check_dir "$DFORGE_REPO_D"
+[ ! "x$DFORGE_GITIGNORE" = 'xnone' ] && check_dir "$DFORGE_BASE/.gitignore.d"
+[ ! "x$DFORGE_GITATTRIBUTES" = 'xnone' ] && check_dir "$DFORGE_BASE/.gitattributes.d"
+
+verbose "$DFORGE_COMMAND begin"
+DFORGE_COMMAND=$(echo "$DFORGE_COMMAND" | sed 's/-/_/g'); export DFORGE_COMMAND
+
+# Source repo-specific configuration file
+# shellcheck source=/dev/null
+[ -r "$XDG_CONFIG_HOME/dforge/config.d/$DFORGE_REPO_NAME" ] \
+	&& . "$XDG_CONFIG_HOME/dforge/config.d/$DFORGE_REPO_NAME"
+
+# source overlay functions
+for overlay in "$DFORGE_OVERLAY_D/$DFORGE_COMMAND"* "$DFORGE_OVERLAY_D/$DFORGE_REPO_NAME.$DFORGE_COMMAND"*; do
+	[ -r "$overlay" ] || continue
+	info "sourcing '$overlay'"
+	# shellcheck source=/dev/null
+	. "$overlay"
+done
+
+hook pre-command
+$DFORGE_COMMAND "$@"
+hook post-command
+verbose "$DFORGE_COMMAND end, exiting"
+exit $DFORGE_COMMAND_RETURN_CODE
