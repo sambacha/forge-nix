@@ -27,6 +27,23 @@ FORGE2NIX_VERSION='v0.0.5'
 # TODO
 # export ETHERS_SOLC_LOG='in=in.json','out=out.json'
 
+OS="$(uname)"
+case "${OS}" in
+    'Linux')
+        OS='linux'
+        SED_IFLAG=(-i'')
+        ;;
+    'Darwin')
+        OS='macos'
+        SED_IFLAG=(-i '')
+        ;;
+    *)
+        echo "Operating system '${OS}' not supported."
+        exit 1
+        ;;
+esac
+
+
 usage() {
   echo >&2 "
 Usage: forge2nix COMMAND [ARGS]
@@ -52,7 +69,7 @@ export getSpec='rev=$(git rev-parse HEAD); \
 fullref=$(git for-each-ref --contains $rev | sed -n "s/^.*refs\/\(heads\|remotes\/\)//p" | sort -k1.1,1.1 -rs | head -n1); \
 remote=${fullref%/*}; remote=${remote:-origin};
 ref=${fullref#*/}; \
-url=$(git remote get-url $remote | sed "s/\(\.git\|\/\)$//"); \
+url=$(git remote get-url $remote | sed ${SED_IFLAG[@]} "s/\(\.git\|\/\)$//"); \
 alias=${url##*/}; con=${alias}_${rev::7}; '
 
 submods() {
@@ -112,7 +129,7 @@ $PWD $con"
       printf %s "$sep"
       sep=","
       if [[ -f "$path/.forge.json" ]]; then
-        jq .contracts "$path/.forge.json" | sed '1d;$d'
+        jq .contracts "$path/.forge.json" | sed ${SED_IFLAG[@]} '1d;$d'
       else
         spec "$path"
       fi
@@ -122,7 +139,7 @@ $PWD $con"
   printf %s "
   },
   \"this\": {
-$(spec "$path" | sed '1,2d;$d')
+$(spec "$path" | sed ${SED_IFLAG[@]} '1,2d;$d')
   }
 }"
 }
@@ -161,7 +178,7 @@ tmpclone() {
     cd "$target" || exit 3
     if [[ -f "./forge.json" ]]; then
       local repo
-      repo=$(jq -c .repo <<<"$(spec "$target" | sed '1s/^.*://')")
+      repo=$(jq -c .repo <<<"$(spec "$target" | sed ${SED_IFLAG[@]} '1s/^.*://')")
       jq ".this.repo = $repo" ./forge.json
     else
       git submodule deinit --all -f >/dev/null >&2 || exit 3
