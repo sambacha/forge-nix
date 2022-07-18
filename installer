@@ -7,14 +7,14 @@ header() { echo -e "\n\033[1m$1\033[0m"; }
 DSHELL_FQDN='manifoldfinance.com'
 
 # TODO - Boilerplate message
-header "Loading forge2nix\n"
-echo " This will download and install the latest forge2nix cli. When you run 'forge2nix'"
-echo " you'll really be running the forge2nix cli, which figures out which version of"
-echo " forge2nix to run based on your current environment."
-echo " If you want to run forge2nix directly, you can do so by running 'forge2nix --version'"
+header "Loading foundry2nix\n"
+echo " This will download and install the latest foundry2nix cli. When you run 'foundry2nix'"
+echo " you'll really be running the foundry2nix cli, which figures out which version of"
+echo " foundry2nix to run based on your current environment."
+echo " If you want to run foundry2nix directly, you can do so by running 'foundry2nix --version'"
 
 header "\nThis script will install\n"
-echo -e " \033[4m/usr/local/bin/forge2nix\033[0m\n\n"
+echo -e " \033[4m/usr/local/bin/foundry2nix\033[0m\n\n"
 
 if [[ $* != "-y" ]]; then
   # Explicitly use /dev/tty instead of relying on stdin pointing at /dev/tty, so that
@@ -25,21 +25,21 @@ fi
 
 header "\n\nDownloading and Installing\n"
 
-echo "  Downloading forge2nix launcher..."
+echo "  Downloading foundry2nix launcher..."
 tmp_file=$(mktemp)
-curl -fsSL https://raw.githubusercontent.com/sambacha/forge-nix/master/src/forge2nix -o "${tmp_file}"
-echo -e "\033[1A ${check_mark} Downloading forge2nix cli... done"
+curl -fsSL https://raw.githubusercontent.com/sambacha/forge-nix/master/src/foundry2nix -o "${tmp_file}"
+echo -e "\033[1A ${check_mark} Downloading foundry2nix cli... done"
 
-echo "   Installing forge2nix cli (requires sudo access)..."
+echo "   Installing foundry2nix cli (requires sudo access)..."
 chmod +x "${tmp_file}"
-$(command -v sudo || true) bash -c "mkdir -p /usr/local/bin && mv ${tmp_file} /usr/local/bin/forge2nix"
-echo -e " ${check_mark} Installing forge2nix cli... done\n"
+$(command -v sudo || true) bash -c "mkdir -p /usr/local/bin && mv ${tmp_file} /usr/local/bin/foundry2nix"
+echo -e " ${check_mark} Installing foundry2nix cli... done\n"
 
 header "Next Steps\n"
-echo -e " 1. \033[1mInitialize forge2nix in a repo\033[0m"
-echo -e "    \033[0;90mRun \033[0;36mforge2nix init\033[0;90m to setup forge2nix in an existing git repo\033[0m\n"
-echo -e "    \033[0;90mRun \033[0;36mforge2nix migrate\033[0;90m to migrate submodules in an existing git repo\033[0m\n"
+echo -e " 1. \033[1mInitialize foundry2nix in a repo\033[0m"
+echo -e "    \033[0;90mRun \033[0;36mfoundry2nix init\033[0;90m to setup foundry2nix in an existing git repo\033[0m\n"
+echo -e "    \033[0;90mRun \033[0;36mfoundry2nix migrate\033[0;90m to migrate submodules in an existing git repo\033[0m\n"
 echo -e " 2. \033[1mRead documentation\033[0m"
 echo -e "    \033[0;90mOur documentation can be found at \033[0;4mhttps://docs.${DSHELL_FQDN}\033[0m\n"
 echo -e " 3. \033[1mGet help and give feedback\033[0m"
-echo -e "    \033[0;90mJoin the forge2nix community at \033[0;4mhttps://forums.${DSHELL_FQDN}\033[0m"
+echo -e "    \033[0;90mJoin the foundry2nix community at \033[0;4mhttps://forums.${DSHELL_FQDN}\033[0m"
