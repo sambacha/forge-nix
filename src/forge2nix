@@ -1,57 +1,27 @@
 #!/usr/bin/env bash
-# Source: https://github.com/icetan/dapp2nix/blob/master/src/dapp2nix
-# Original Author: icetan
-# Unlicense: A license with no conditions whatsoever which dedicates works to the public domain.
-# Unlicensed works, modifications, and larger works may be distributed under different terms and without source code.
-# Modifications to work with Foundry instead of Dapptools
-# License: Unlicense (same)
-
 set -eo pipefail
 shopt -s lastpipe
+
 
 # runs with Makefile to generate hash on CI
 # shellcheck disable=SC2034
 SCRIPT_COMMIT_SHA="${LOAD_SCRIPT_COMMIT_SHA}"
 
-CACHE_DIR="${XDG_CACHE_HOME:-"${HOME}/.cache"}/forge2nix"
-
-# This isolates git from the local system config
+CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/foundry2nix"
 export GIT_CONFIG_NOSYSTEM=1
 unset XDG_CONFIG_HOME
 unset HOME
 
-
-FORGE2NIX_VERSION='v0.0.5'
-#FORGE2NIX_VERSION="${FORGE2NIX_VERSION:-unknown}"
-
-# TODO
-# export ETHERS_SOLC_LOG='in=in.json','out=out.json'
-
-OS="$(uname)"
-case "${OS}" in
-    'Linux')
-        OS='linux'
-        SED_IFLAG=(-i'')
-        ;;
-    'Darwin')
-        OS='macos'
-        SED_IFLAG=(-i '')
-        ;;
-    *)
-        echo "Operating system '${OS}' not supported."
-        exit 1
-        ;;
-esac
-
+#FOUNDRY2NIX_VERSION="${FOUNDRY2NIX_VERSION:-unknown}"
+FOUNDRY2NIX_VERSION="0.01.rc1"
 
 usage() {
   echo >&2 "
-Usage: forge2nix COMMAND [ARGS]
+Usage: foundry2nix COMMAND [ARGS]
 
 Commands
-
-  init                      Create a .forge.json
-  migrate                   Populate .forge.json from submodules
+  init                      Create a .foundry.json
+  migrate                   Populate .foundry.json from submodules
   add <URL> [REF]           Add a dependency from URL pointing to a Git repo
   remove | rm <NAME>        Remove a dependency
   update | up [NAME [REF]]  Update a dependency to REF
@@ -61,7 +31,7 @@ Commands
   clone-recursive [PATH]    Clone dependencies into a directory and fetch their submodules
   help                      Print this message
 
-Version $FORGE2NIX_VERSION
+Version $FOUNDRY2NIX_VERSION
 "
 }
 
@@ -69,13 +39,13 @@ export getSpec='rev=$(git rev-parse HEAD); \
 fullref=$(git for-each-ref --contains $rev | sed -n "s/^.*refs\/\(heads\|remotes\/\)//p" | sort -k1.1,1.1 -rs | head -n1); \
 remote=${fullref%/*}; remote=${remote:-origin};
 ref=${fullref#*/}; \
-url=$(git remote get-url $remote | sed ${SED_IFLAG[@]} "s/\(\.git\|\/\)$//"); \
+url=$(git remote get-url $remote | sed "s/\(\.git\|\/\)$//"); \
 alias=${url##*/}; con=${alias}_${rev::7}; '
 
 submods() {
   git submodule --quiet foreach --recursive \
-    "$getSpec"'printf %s\\n "$PWD $con"' |
-    sort -k2 -u
+    "$getSpec"'printf %s\\n "$PWD $con"' \
+    | sort -k2 -u
 }
 export -f submods
 
@@ -86,8 +56,7 @@ subdeps() {
 export -f subdeps
 
 spec() {
-  (
-    cd "$1" || exit
+  (cd "$1"
     eval "$getSpec"
     deps=$(subdeps)
     name=$alias-${rev::7}
@@ -110,14 +79,11 @@ export -f spec
 specs() {
   eval "$getSpec"
 
-  local repos
-  repos="$1
+  local repos; repos="$1
 $PWD $con"
-  local root
-  root=$(realpath .)
-  local deps
-  local sep
-  sep=""
+  local root; root=$(realpath .)
+  local deps;
+  local sep; sep=""
 
   printf %s "{
   \"contracts\": {"
@@ -126,10 +92,9 @@ $PWD $con"
   for path in $(cut -d " " -f1 <<<"$repos"); do
 
     if [[ $path != "$root" ]]; then
-      printf %s "$sep"
-      sep=","
-      if [[ -f "$path/.forge.json" ]]; then
-        jq .contracts "$path/.forge.json" | sed ${SED_IFLAG[@]} '1d;$d'
+      printf %s "$sep"; sep=","
+      if [[ -f "$path/.foundry.json" ]]; then
+        jq .contracts "$path/.foundry.json" | sed '1d;$d'
       else
         spec "$path"
       fi
@@ -139,20 +104,16 @@ $PWD $con"
   printf %s "
   },
   \"this\": {
-$(spec "$path" | sed ${SED_IFLAG[@]} '1,2d;$d')
+$(spec "$path" | sed '1,2d;$d')
   }
 }"
 }
 export -f specs
 
 main() {
-  local repos
-  repos=$(submods)
+  local repos; repos=$(submods)
 
-  [ -n "$repos" ] || {
-    echo >&2 'Submodules not initiated? Run: `git submodule update --init --recursive`'
-    exit 1
-  }
+  [ -n "$repos" ] || { echo >&2 'Submodules not initiated? Run: `git submodule update --init --recursive`'; exit 1; }
 
   specs "$repos"
 }
@@ -160,8 +121,7 @@ export -f main
 
 clone() {
   [[ -d "$3/.git" ]] || git clone "$1" "$3" >&2
-  (
-    cd "$3" || exit 3
+  (cd "$3" || exit 3
     git fetch >&2 || exit 3
     git checkout "${2:-HEAD}" >&2 || exit 3
     git pull >&2 || true
@@ -169,17 +129,14 @@ clone() {
 }
 
 tmpclone() {
-  local target
-  target="$CACHE_DIR/${1##*/}"
-  [[ -d "$target" && "$1" == "$(git -C "$target" remote get-url origin)" ]] ||
-    rm -rf "$target"
+  local target; target="$CACHE_DIR/${1##*/}"
+  [[ -d "$target" && "$1" == "$(git -C "$target" remote get-url origin)" ]] \
+    || rm -rf "$target"
   clone "$1" "${2:-HEAD}" "$target" >&2
-  (
-    cd "$target" || exit 3
-    if [[ -f "./forge.json" ]]; then
-      local repo
-      repo=$(jq -c .repo <<<"$(spec "$target" | sed ${SED_IFLAG[@]} '1s/^.*://')")
-      jq ".this.repo = $repo" ./forge.json
+  (cd "$target" || exit 3
+    if [[ -f "./foundry.json" ]]; then
+      local repo; repo=$(jq -c .repo <<<"$(spec "$target" | sed '1s/^.*://')")
+      jq ".this.repo = $repo" ./foundry.json
     else
       git submodule deinit --all -f >/dev/null >&2 || exit 3
       git submodule update --init --recursive >&2 || exit 3
@@ -201,7 +158,6 @@ clean_deps() {
         | reduce . as $x ([]; . + w($x))
         ] | fu
       ;
-
     .contracts = (
         [ .this.deps[] | values | w(.) ]
       | fu as $deps
@@ -231,7 +187,7 @@ add_dep() {
   local addcon="${addname}_${addrev::7}"
 
   [[ $(jq ".this.deps.\"$addname\"" <<<"$jsonIn") == null ]] || {
-    echo >&2 "Dependency $addname already exists, not adding. Use \`forge2nix update $addname $ref\` instead."
+    echo >&2 "Dependency $addname already exists, not adding. Use \`foundry2nix update $addname $ref\` instead."
     exit 1
   }
 
@@ -241,12 +197,11 @@ add_dep() {
     {\"contracts\": {\"$addcon\":$this}, \"this\": {\"deps\": {\"$addname\":\"$addcon\"}}}
   "
 }
-
 init() {
   cat \
-    <(echo "# Automatically generated by forge2nix $FORGE2NIX_VERSION, should not edit!") \
-    "${FORGE2NIX_EXPR:-${BASH_SOURCE[0]%/*}/forge2.nix}" \
-    >"$1/forge2.nix"
+    <(echo "# Generated by foundry2nix $FOUNDRY2NIX_VERSION, do not edit!") \
+    "${FOUNDRY2NIX_EXPR:-${BASH_SOURCE[0]%/*}/foundry2.nix}" \
+    > "$1/foundry2.nix"
   printf %s "
 {
   \"contracts\": {},
@@ -255,7 +210,6 @@ init() {
     \"deps\": {}
   }
 }"
-
 }
 
 remove_dep() {
@@ -266,7 +220,7 @@ update_dep() {
   local con=$(jq ".this.deps.\"$2\"" <<<"$1")
 
   [[ $con != null ]] || {
-    echo >&2 "Dependency $2 not added. Use \`forge2nix add\` first"
+    echo >&2 "Dependency $2 not added. Use \`foundry2nix add\` first"
     exit 1
   }
 
@@ -309,8 +263,7 @@ clone_deps() {
     target="${2:-.}/$dep"
     clone "$url" "$rev" "$target"
     if [[ "$3" == "--recursive" ]]; then
-      (
-        cd "$target" || exit 3
+      (cd "$target" || exit 3
         git submodule update --init --recursive >&2 || exit 3
       ) || exit $?
     fi
@@ -325,76 +278,76 @@ save() {
   local jsonOut
   jsonOut=$(clean_deps "$1")
   jsonOut=$(jq -S '
-      .version = ($ENV.FORGE2NIX_FORMAT_VERSION | tonumber)
+      .version = ($ENV.FOUNDRY2NIX_FORMAT_VERSION | tonumber)
     | del(.this.repo)
   ' <<<"$jsonOut")
   if [[ -n "$jsonOut" ]]; then
-    echo "$jsonOut" >"$2"
+    echo "$jsonOut" > "$2"
   else
     exit 5
   fi
 }
 
-outPath="$PWD/.forge.json"
+outPath="$PWD/.foundry.json"
 outDir="$PWD"
 
 [[ -f "$outPath" || $1 == init || $1 == migrate ]] || {
-  echo >&2 "Couldn't read .forge.json, please run: \`forge2nix init\` or \`forge2nix migrate\` first"
+  echo >&2 "Couldn't read .foundry.json, please run: \`foundry2nix init\` or \`foundry2nix migrate\` first"
   usage
   exit 1
 }
 
 case "${1:-help}" in
-init)
-  [[ ! -e "$outPath" ]] || {
-    echo >&2 ".forge.json already exists, will not init"
+  init)
+    [[ ! -e "$outPath" ]] || {
+      echo >&2 ".foundry.json already exists, will not init"
+      exit 1
+    }
+    save "$(init "$outDir")" "$outPath"
+    ;;
+  migrate)
+    [[ ! -e "$outPath" ]] || {
+      echo >&2 ".foundry.json already exists, will not migrate"
+      exit 1
+    }
+    init "$outDir" >/dev/null
+    save "$(main)" "$outPath"
+    ;;
+  add)
+    jsonOut=$(add_dep "$(cat "$outPath")" "$2" "$3") || exit $?
+    save "$jsonOut" "$outPath"
+    ;;
+  remove|rm)
+    jsonOut=$(remove_dep "$(cat "$outPath")" "$2") || exit $?
+    save "$jsonOut" "$outPath"
+    ;;
+  list|ls)
+    list_deps "$(cat "$outPath")" | column -t -s" "
+    ;;
+  duplicates|dup)
+    jq -r '.contracts[] | values | "\(.repo.rev) \(.name)"' "$outPath" \
+      | sort -k2 | uniq -f1 -D | column -t -s" "
+    ;;
+  update|up)
+    if [[ -n $2 ]]; then
+      jsonOut=$(update_dep "$(cat "$outPath")" "$2" "$3") || exit $?
+    else
+      jsonOut=$(update_deps "$(cat "$outPath")") || exit $?
+    fi
+    save "$jsonOut" "$outPath"
+    ;;
+  clone)
+    clone_deps "$(cat "$outPath")" "${2:-lib}"
+    ;;
+  clone-recursive)
+    clone_deps "$(cat "$outPath")" "${2:-lib}" --recursive
+    ;;
+  help)
+    usage
+    ;;
+  *)
+    echo >&2 "No command $1"
+    usage
     exit 1
-  }
-  save "$(init "$outDir")" "$outPath"
-  ;;
-migrate)
-  [[ ! -e "$outPath" ]] || {
-    echo >&2 ".forge.json already exists, will not migrate"
-    exit 1
-  }
-  init "$outDir" >/dev/null
-  save "$(main)" "$outPath"
-  ;;
-add)
-  jsonOut=$(add_dep "$(cat "$outPath")" "$2" "$3") || exit $?
-  save "$jsonOut" "$outPath"
-  ;;
-remove | rm)
-  jsonOut=$(remove_dep "$(cat "$outPath")" "$2") || exit $?
-  save "$jsonOut" "$outPath"
-  ;;
-list | ls)
-  list_deps "$(cat "$outPath")" | column -t -s" "
-  ;;
-duplicates | dup)
-  jq -r '.contracts[] | values | "\(.repo.rev) \(.name)"' "$outPath" |
-    sort -k2 | uniq -f1 -D | column -t -s" "
-  ;;
-update | up)
-  if [[ -n $2 ]]; then
-    jsonOut=$(update_dep "$(cat "$outPath")" "$2" "$3") || exit $?
-  else
-    jsonOut=$(update_deps "$(cat "$outPath")") || exit $?
-  fi
-  save "$jsonOut" "$outPath"
-  ;;
-clone)
-  clone_deps "$(cat "$outPath")" "${2:-lib}"
-  ;;
-clone-recursive)
-  clone_deps "$(cat "$outPath")" "${2:-lib}" --recursive
-  ;;
-help)
-  usage
-  ;;
-*)
-  echo >&2 "No command $1"
-  usage
-  exit 1
-  ;;
+    ;;
 esac
