@@ -1,0 +1,15 @@
+OS="$(uname)"
+case "${OS}" in
+    'Linux')
+        OS='linux'
+        SED_IFLAG=(-i'')
+        ;;
+    'Darwin')
+        OS='macos'
+        SED_IFLAG=(-i '')
+        ;;
+    *)
+        echo "Operating system '${OS}' not supported."
+        exit 1
+        ;;
+esac
