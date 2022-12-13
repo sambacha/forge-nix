@@ -17,5 +17,5 @@ fi
 if [ -n "${USE_GIT_URI}" ]; then
   GITHUB="git://github.com"
 else
-  GITHUB="https://github.com"
+  GITHUB="git@github.com:"
 fi
